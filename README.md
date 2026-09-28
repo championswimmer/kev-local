@@ -126,6 +126,26 @@ CUDA-tuned and untested on ROCm/gfx1151, so `serve_model.sh` disables both and r
 PyTorch path. Slower than a tuned CUDA server, fine for local use; revisit if you want to chase
 throughput.
 
+## Benchmarks
+
+`scripts/benchmark.py <port> -n 100` fires sequential `/v1/systemone` requests (3 questions each:
+noul/choice/score) at a running server, cycling through 10 distinct sample states so the prefix cache
+doesn't flatter the numbers, and reports latency + throughput. Measured here (5 warmup requests, then
+100 timed, eager PyTorch path, ROCm 7.2, ambient system otherwise idle):
+
+| Model  | req/s | mean ms/req | p50 ms | p90 ms | p99 ms | output tok/s | mean in/out tokens |
+|--------|------:|------------:|-------:|-------:|-------:|-------------:|-------------------:|
+| kev-4b | 5.15  | 193.9       | 193.3  | 195.0  | 217.1  | 1116         | 82.9 / 216.6       |
+| kev-9b | 2.73  | 366.1       | 365.9  | 369.7  | 370.8  | 591          | 82.9 / 216.5       |
+
+Latency is very tight (p50 ≈ mean ≈ p90 for both) - no GPU thermal throttling or contention observed
+over a 100-request run. 9B is ~1.9x the latency and ~0.53x the throughput of 4B, roughly tracking its
+~2.25x parameter count. "output tokens" here is kev's own usage accounting for the pointer-head forward
+pass (no text is generated), not a text-generation token count - useful as a relative throughput number
+between the two models, not directly comparable to an LLM's decode tok/s.
+
+Reproduce: `port=$(./scripts/kev_ctl.sh 4b start); python3 scripts/benchmark.py "$port" -n 100 --json`.
+
 ## Layout
 
 ```
@@ -140,8 +160,10 @@ kev-local/
     patch_repo.sh       the actual pyproject.toml patch (python cap, torch source/version)
     download_models.sh pulls the 4 HF repos needed (2 bases + 2 adapters)
     run_gpu.sh         runs a command with the render group active (no relogin needed)
-    serve_model.sh     starts kev.serve for 4b or 9b
+    serve_model.sh     starts kev.serve for 4b or 9b (foreground)
+    kev_ctl.sh         start|stop|status a model in the background; prints its port
     test_model.sh      sample /v1/systemone request against a running server
+    benchmark.py       N sequential requests against a running server; latency + throughput
   Dockerfile           optional fallback (rocm/pytorch base image) if you ever need this
                         containerized or on a different distro - not needed on this machine
 ```
