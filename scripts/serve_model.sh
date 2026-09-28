@@ -14,6 +14,8 @@ case "$SIZE" in
 esac
 
 export HF_HOME="$KEV_LOCAL/models/hf-cache"
+# Same xet-backend stall as in download_models.sh - force plain HTTP for cache lookups too.
+export HF_HUB_DISABLE_XET=1
 # Eager PyTorch path: fused Triton/fla kernels + CUDA graphs are CUDA-tuned and not
 # validated on ROCm/gfx1151 yet, so keep them off for a correct first run.
 export KEV_FUSED=0

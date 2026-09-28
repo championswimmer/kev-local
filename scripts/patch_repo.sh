@@ -19,7 +19,10 @@ cd "$REPO"
 sed -i 's/^requires-python = ">=3.12,<3.14"$/requires-python = ">=3.12,<3.15"/' pyproject.toml
 
 if grep -q '^    "torch>=2.6,<2.9",$' pyproject.toml; then
-  sed -i 's/^    "torch>=2.6,<2.9",$/    "torch==2.14.0",/' pyproject.toml
+  # triton-rocm has to be a *direct* dependency here too, not just torch's transitive
+  # one - tool.uv.sources below only redirects packages the project itself depends on,
+  # not arbitrary transitive deps pulled in by another package's wheel metadata.
+  sed -i 's/^    "torch>=2.6,<2.9",$/    "torch==2.14.0",\n    "triton-rocm>=3.8.0,<3.9",/' pyproject.toml
 fi
 
 if ! grep -q '^\[tool.uv.sources\]$' pyproject.toml; then
@@ -27,11 +30,20 @@ if ! grep -q '^\[tool.uv.sources\]$' pyproject.toml; then
 
 [tool.uv.sources]
 torch = { index = "pytorch-rocm" }
+# torch's own dependency - if left on PyPI's default index, it resolves to an unrelated
+# ancient (3.0.0rc1) package that happens to share this name, instead of the real one
+# that ships alongside the ROCm torch wheel.
+triton-rocm = { index = "pytorch-rocm" }
 
 [[tool.uv.index]]
 name = "pytorch-rocm"
 url = "https://download.pytorch.org/whl/rocm7.2"
 explicit = true
+
+[tool.uv]
+# Skip solving the Darwin/MLX marker branch (kev's own [serve]/[mlx] extras condition
+# mlx-lm on sys_platform=='darwin') - irrelevant here and not worth the resolver time.
+environments = ["sys_platform == 'linux'"]
 EOF
 fi
 

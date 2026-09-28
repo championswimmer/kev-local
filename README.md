@@ -17,6 +17,11 @@ This directory documents/automates running the **4B** and **9B** checkpoints loc
 `repo/` is a **git submodule** pointing at the real [jaredpalmer/kev](https://github.com/jaredpalmer/kev)
 - this directory only carries what we did to get it running here, not a copy of the project itself.
 
+**Verified working end-to-end**: both `kev-4b` and `kev-9b` load, run on the GPU, and answer
+`/v1/systemone` requests correctly (`./scripts/test_model.sh` output for a sample angry-billing-complaint
+state: `billing` ~0.93-0.94, `tone`="angry", `urgency`~2.9 - sensible on both models). ~3.5-4.2s latency
+per request on the eager (non-fused) path.
+
 ## The one real gotcha: ROCm 7.1 segfaults on this chip
 
 Ubuntu 26.04 conveniently ships ROCm 7.1 + a matching PyTorch build directly via apt
@@ -32,7 +37,11 @@ path on this hardware, not a driver/kernel/firmware problem (`amdgpu`/`kfd` init
 apt package. `scripts/patch_repo.sh` pins this (`torch==2.14.0` via a `[tool.uv.sources]` /
 `[[tool.uv.index]]` override in the submodule's `pyproject.toml`, applied at setup time - see below).
 Verified locally: bf16 matmul on the actual GPU, no crash, `torch.cuda.get_device_name(0)` correctly
-reports "Radeon 8060S Graphics".
+reports "Radeon 8060S Graphics". One wrinkle: `[tool.uv.sources]` only redirects packages *your project
+itself* depends on, not arbitrary transitive dependencies pulled in by another package's wheel metadata
+- so `triton-rocm` (torch's own dependency) also has to be declared as a direct dependency here, or it
+silently resolves against an unrelated ancient package of the same name on PyPI instead of the one that
+ships alongside the real ROCm torch build.
 
 One upside of this path: since it's a self-contained wheel (bundles its own ROCm runtime libs) rather
 than something tied to Ubuntu's specific apt-packaged Python build, it isn't picky about *which*
@@ -147,3 +156,12 @@ interpreter was built.
 - **`uv sync` seems to hang or take a very long time, or you find an unused `repo/.venv`** - check
   `UV_PROJECT_ENVIRONMENT` is actually set (`setup_env.sh` does this) - without it, `uv sync` creates
   its own venv inside the submodule instead of using `kev-local/.venv`.
+- **`kev.serve` hangs forever at `Fetching N files: 0%` while loading the base model, and killing +
+  retrying doesn't help** - this happened once from mixing cache conventions: `hf download --cache-dir
+  X` puts files directly under `X/models--*`, while everything that only sets the `HF_HOME` *env var*
+  (transformers, `kev.serve`, huggingface_hub itself) looks under `X/hub/models--*` instead. The two
+  silently produced separate, differently-populated caches, and `kev.serve` ended up retrying network
+  fetches against a mostly-empty second copy while the real, complete one sat unused right next to it.
+  `download_models.sh` no longer passes `--cache-dir` for exactly this reason - if you scripted your own
+  download some other way, make sure it didn't either (`find models/hf-cache -maxdepth 1` should show
+  only a `hub/` directory, no stray top-level `models--*` dirs next to it).

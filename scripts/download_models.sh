@@ -9,12 +9,17 @@ mkdir -p "$HF_HOME"
 # The xet CDN backend stalls/retries heavily on this network; plain HTTP is reliable.
 export HF_HUB_DISABLE_XET=1
 
+# Deliberately NOT passing --cache-dir: that puts files directly under $HF_HOME
+# (models--*/ with no "hub" level), while every HF_HOME-only consumer (transformers,
+# kev.serve, huggingface_hub itself) looks under $HF_HOME/hub/models--*. Mixing the two
+# once produced two divergent, half-populated caches and a very confusing hang - let
+# HF_HOME alone pick the standard layout everywhere.
 echo "=== Downloading base models ==="
-hf download Qwen/Qwen3.5-4B-Base --cache-dir "$HF_HOME"
-hf download Qwen/Qwen3.5-9B-Base --cache-dir "$HF_HOME"
+hf download Qwen/Qwen3.5-4B-Base
+hf download Qwen/Qwen3.5-9B-Base
 
 echo "=== Downloading Kev adapters ==="
-hf download jaredpalmer/kev-4b --cache-dir "$HF_HOME"
-hf download jaredpalmer/kev-9b --cache-dir "$HF_HOME"
+hf download jaredpalmer/kev-4b
+hf download jaredpalmer/kev-9b
 
 echo "=== DONE ==="
