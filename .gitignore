@@ -1,0 +1,6 @@
+# The kev repo itself is a submodule (see repo/) - only our own setup lives here.
+/.venv/
+/models/
+__pycache__/
+*.pyc
+.DS_Store
