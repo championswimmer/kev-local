@@ -17,11 +17,19 @@ export HF_HOME="$KEV_LOCAL/models/hf-cache"
 # Same xet-backend stall as in download_models.sh - force plain HTTP for cache lookups too.
 export HF_HUB_DISABLE_XET=1
 # Eager PyTorch path: fused Triton/fla kernels + CUDA graphs are CUDA-tuned and not
-# validated on ROCm/gfx1151 yet, so keep them off for a correct first run.
+# validated on ROCm/gfx1151 yet, so keep them off for a correct first run. No-ops on the
+# MLX backend (Apple Silicon) - it always runs the backbone as stored, ignoring these.
 export KEV_FUSED=0
 export KEV_CUDA_GRAPHS=0
 export KEV_DTYPE=bf16
 
 echo "Serving $MODEL on :$PORT (HF_HOME=$HF_HOME)"
-exec "$SCRIPT_DIR/run_gpu.sh" \
-  "$KEV_LOCAL/.venv/bin/python" -m kev.serve --run "$MODEL" --port "$PORT"
+# run_gpu.sh's `sg render` group wrapping is only needed for ROCm's /dev/kfd device
+# access on Linux; on macOS the MPS/MLX backends need no special group, and `sg` isn't
+# the same command there anyway - so run kev.serve directly.
+if [ "$(uname -s)" = "Linux" ]; then
+  exec "$SCRIPT_DIR/run_gpu.sh" \
+    "$KEV_LOCAL/.venv/bin/python" -m kev.serve --run "$MODEL" --port "$PORT"
+else
+  exec "$KEV_LOCAL/.venv/bin/python" -m kev.serve --run "$MODEL" --port "$PORT"
+fi
