@@ -82,10 +82,23 @@ during setup and wasted 20+ minutes installing an unused CUDA build of torch the
 
 ## Running a model
 
+**Foreground** (blocks the terminal, logs straight to stdout - good for a first run/debugging):
+
 ```bash
 ./scripts/serve_model.sh 4b        # serves jaredpalmer/kev-4b on :8008
 ./scripts/serve_model.sh 9b 8009   # or 9b on a different port
 ```
+
+**Background**, with start/stop/status and the port reported on stdout:
+
+```bash
+port=$(./scripts/kev_ctl.sh 4b start)   # backgrounds it, waits for readiness, prints the port
+./scripts/kev_ctl.sh 4b status          # prints the port if running (exit 1, stderr message if not)
+./scripts/kev_ctl.sh 4b stop
+```
+
+(`start` is a no-op - just re-prints the port - if that size is already running; pid/port/log per size
+live under `run/`, gitignored.)
 
 In another terminal:
 
