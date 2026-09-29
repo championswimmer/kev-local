@@ -147,6 +147,8 @@ autodetection (torch `cuda` on ROCm, `mps`+MLX on Apple Silicon) handles the res
 ```bash
 port=$(./scripts/kev_ctl.sh 4b start)   # backgrounds it, waits for readiness, prints the port
 ./scripts/kev_ctl.sh 4b status          # prints the port if running (exit 1, stderr message if not)
+./scripts/kev_ctl.sh 4b logs            # follows the log, starting with the last 100 lines
+./scripts/kev_ctl.sh 4b logs 300        # start with the last 300 lines instead
 ./scripts/kev_ctl.sh 4b stop
 ```
 

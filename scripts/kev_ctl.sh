@@ -5,6 +5,7 @@
 #   kev_ctl.sh <4b|9b> start [port]   # default port: 4b->8008, 9b->8009
 #   kev_ctl.sh <4b|9b> stop
 #   kev_ctl.sh <4b|9b> status
+#   kev_ctl.sh <4b|9b> logs [lines]  # follow the log; default: last 100 lines
 #
 # On success, `start` and `status` print ONLY the port number to stdout (everything
 # else goes to stderr), so callers can do: port=$(./scripts/kev_ctl.sh 4b start)
@@ -14,8 +15,8 @@ KEV_LOCAL="$(cd "$SCRIPT_DIR/.." && pwd)"
 RUN_DIR="$KEV_LOCAL/run"
 mkdir -p "$RUN_DIR"
 
-SIZE="${1:?usage: kev_ctl.sh <4b|9b> <start|stop|status> [port]}"
-ACTION="${2:?usage: kev_ctl.sh <4b|9b> <start|stop|status> [port]}"
+SIZE="${1:?usage: kev_ctl.sh <4b|9b> <start|stop|status|logs> [port|lines]}"
+ACTION="${2:?usage: kev_ctl.sh <4b|9b> <start|stop|status|logs> [port|lines]}"
 case "$SIZE" in
   4b) DEFAULT_PORT=8008 ;;
   9b) DEFAULT_PORT=8009 ;;
@@ -91,8 +92,21 @@ case "$ACTION" in
     fi
     ;;
 
+  logs)
+    LINES="${3:-100}"
+    if ! [[ "$LINES" =~ ^[1-9][0-9]*$ ]]; then
+      echo "invalid line count: $LINES (expected a positive integer)" >&2
+      exit 2
+    fi
+    if [ ! -f "$LOGFILE" ]; then
+      echo "no log found for kev-$SIZE ($LOGFILE)" >&2
+      exit 1
+    fi
+    tail -n "$LINES" -f "$LOGFILE"
+    ;;
+
   *)
-    echo "unknown action: $ACTION (expected start, stop, or status)" >&2
+    echo "unknown action: $ACTION (expected start, stop, status, or logs)" >&2
     exit 1
     ;;
 esac
