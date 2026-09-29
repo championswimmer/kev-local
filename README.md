@@ -221,6 +221,26 @@ but the practical number if you're choosing which machine to point a workload at
 
 Reproduce (either machine): `port=$(./scripts/kev_ctl.sh 4b start); python3 scripts/benchmark.py "$port" -n 100 --json`.
 
+### Concurrency: requests get batched, not serialized
+
+`kev.serve` runs one model thread that takes whatever's currently queued (up to `MAX_BATCH=64`) and runs
+it as a single forward pass, so concurrent requests genuinely batch together instead of queueing one
+behind another. Verified on kev-4b (Apple M5 Pro, warm server): fired 6 requests sequentially vs. 6 fired
+concurrently (`concurrent.futures.ThreadPoolExecutor`), and checked `/v1/models`' own `batches` counter
+before/after each run to confirm what actually happened server-side:
+
+| | total wall time | req/s | batches used |
+|---|--:|--:|---|
+| 6 sequential | 701ms | 8.56 | 6 (one request each) |
+| 6 concurrent | 540ms | 11.10 | 2 (server merged them) |
+
+The `batches.count` delta (2, not 6) confirms the 6 concurrent requests were fused into 2 GPU passes
+rather than run one at a time - ~30% higher throughput than sequential. The tradeoff: per-request latency
+for whichever requests land in a larger batch rises (from ~117ms isolated to ~540ms batched with 5
+others) - better aggregate throughput, worse tail latency for any one request, the usual batching
+tradeoff. So yes, the local server handles 6 (or more, up to 64) parallel requests correctly and by
+design, not just by accident of FastAPI's thread pool.
+
 ### For reference: the real, hosted Jev (TypeSafe's System One model) via OpenRouter
 
 kev is an open reconstruction of TypeSafe's proprietary "Jev" - not a copy, so it's worth also timing the
