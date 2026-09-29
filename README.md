@@ -26,7 +26,8 @@ itself. `git submodule update --init --recursive` before anything else if `repo/
 `/v1/systemone` requests correctly (`./scripts/test_model.sh` output for a sample angry-billing-complaint
 state: `billing` ~0.92-0.94, `tone`="angry", `urgency`~2.9 - sensible on all four combinations of
 model x machine). Per-request latency: ~194-366ms on the AMD box (eager ROCm), ~114-201ms on the Apple
-M5 Pro (MLX) - see [Benchmarks](#benchmarks).
+M5 Pro (MLX) - see [Benchmarks](#benchmarks), which also times the real, hosted Jev (TypeSafe's original,
+proprietary model that kev reconstructs) via OpenRouter for reference, at ~288ms/req over the network.
 
 ## AMD Strix Halo: the one real gotcha - ROCm 7.1 segfaults on this chip
 
@@ -220,6 +221,39 @@ but the practical number if you're choosing which machine to point a workload at
 
 Reproduce (either machine): `port=$(./scripts/kev_ctl.sh 4b start); python3 scripts/benchmark.py "$port" -n 100 --json`.
 
+### For reference: the real, hosted Jev (TypeSafe's System One model) via OpenRouter
+
+kev is an open reconstruction of TypeSafe's proprietary "Jev" - not a copy, so it's worth also timing the
+real thing for a speed comparison. OpenRouter's usual chat endpoint does **not** serve it: the only
+chat-completions listing (`typesafe/jev-router`) is a general-purpose model *router* that dispatches to
+arbitrary underlying LLMs (three test calls with a billing/tone/urgency prompt all silently routed to
+`openai/gpt-6-luna` on Azure) - not Jev, despite the name. The actual Jev decision model,
+`typesafe/jev-1.13`, lives only behind OpenRouter's dedicated **`/api/alpha/decisions`** endpoint
+(`chat/completions` rejects it: *"is a decisions model, use /api/alpha/decisions instead"*). That
+endpoint takes the same `{model, state, questions}` shape as kev's own `/v1/systemone` and returns the
+same per-question calibrated probabilities - `scripts/benchmark_openrouter.py` fires the identical sample
+states/questions at it over the network with `OPENROUTER_API_KEY` and reports the same metrics.
+
+5 warmup requests, then 100 timed, sequential, from the Apple M5 Pro's network connection:
+
+| Model                       | req/s | mean ms/req | p50 ms | p90 ms | p99 ms | output tok/s | mean in/out tokens |
+|------------------------------|------:|------------:|-------:|-------:|-------:|-------------:|-------------------:|
+| jev-1.13 (`typesafe/jev-1.13-20260917`) | 3.47  | 288.1       | 264.3  | 370.9  | 1061.2 | 258.5        | 384.9 / 74.5        |
+
+This is **not a fair head-to-head with the two boxes above** - it's a network round trip to a hosted,
+shared, metered API (TypeSafe's own infra, whatever machine and load it happens to be under), not a
+local process on hardware we control; the p99 tail (1061ms vs. a ~371ms p90) shows exactly that kind of
+external variance neither local benchmark exhibits. Input/output token accounting also isn't directly
+comparable - TypeSafe's own tokenizer counts ~4.6x the input tokens kev's does for the identical
+state+questions JSON, and far fewer output tokens (74.5 vs. kev's ~217; kev-4b/9b returns 3 richer
+per-question fields, Jev's response is more compact). Treat this purely as "what does calling the real,
+hosted product cost in wall-clock time," not as a hardware or model-quality comparison - both local kev
+boxes are meaningfully faster in this measurement, but they're also not paying for network egress,
+queueing, or someone else's multi-tenant load. Each request costs a small metered amount (~$0.0000165
+seen here; 100 requests ≈ $0.0017) - real spend against `OPENROUTER_API_KEY`, unlike the free local runs.
+
+Reproduce: `OPENROUTER_API_KEY=... python3 scripts/benchmark_openrouter.py -n 100 --json`.
+
 ### Quantization: investigated, not worth it here
 
 Both serving paths run bf16 today (no quantization). Looked into whether a 4-bit/8-bit MLX quantized
@@ -265,6 +299,9 @@ kev-local/
     kev_ctl.sh         start|stop|status a model in the background; prints its port - same on both
     test_model.sh      sample /v1/systemone request against a running server - same on both
     benchmark.py       N sequential requests against a running server; latency + throughput - same on both
+    benchmark_openrouter.py  same benchmark methodology against the real, hosted Jev via OpenRouter's
+                        /api/alpha/decisions endpoint (needs OPENROUTER_API_KEY) - for reference only,
+                        see "the real, hosted Jev" section above
   Dockerfile           optional fallback (rocm/pytorch base image) for the AMD box if you ever need this
                         containerized or on a different Linux distro - not needed for local runs on
                         either machine documented here
