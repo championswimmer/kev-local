@@ -99,6 +99,8 @@ git submodule update --init --recursive
                                  # installs kev + deps incl. the ROCm 7.2 torch wheel, runs a GPU smoke test
 ./scripts/download_models.sh    # pulls Qwen3.5-4B-Base, Qwen3.5-9B-Base, kev-4b, kev-9b into models/hf-cache
                                  # (safe to re-run - resumes/skips what's already there)
+                                 # pass 4b or 9b to fetch only that size; add --remove to delete
+                                 # it from the cache instead (asks for confirmation)
 ```
 
 `setup_env.sh` also points `uv`'s project-venv at `kev-local/.venv` explicitly
@@ -314,7 +316,8 @@ kev-local/
     setup_env_mac.sh   macOS one-time setup: uv-provisions Python 3.13, creates venv, installs deps
                         (plain PyPI torch MPS wheel + mlx-lm, no submodule patch needed), MPS+mlx smoke test
     patch_repo.sh       the actual pyproject.toml patch for ROCm (python cap, torch source/version)
-    download_models.sh pulls the 4 HF repos needed (2 bases + 2 adapters) - same on both platforms
+    download_models.sh pulls the 4 HF repos needed (2 bases + 2 adapters) - same on both platforms;
+                        `4b`/`9b` limits it to one size, `--remove` deletes instead (with confirmation)
     run_gpu.sh         Linux only: runs a command with the render group active (no relogin needed)
     serve_model.sh     starts kev.serve for 4b or 9b (foreground); detects Linux vs. Darwin itself to
                         decide whether to go through run_gpu.sh
